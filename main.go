@@ -49,14 +49,10 @@ func validateTokenAddr(addr string) error {
 func main() {
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	apiKey := fs.String("api-key", getenv("POLYGONSCAN_API_KEY", defaultExplorerAPIKey), "Etherscan API v2 key (overrides POLYGONSCAN_API_KEY; default is built-in)")
-	chainID := fs.Int("chain-id", polygonscan.PolygonChainID, "Etherscan API v2 chain id (Polygon PoS = 137)")
-	tokenAddr := fs.String("token", espaniolaVila9Token, "ERC-20 contract address")
-	maxPages := fs.Int("max-pages", 0, "Max tokentx API pages (0 = fetch until exhausted)")
+	tokenAddr := fs.String("token", rootsV1Token, "ERC-20 contract address")
 	scanPause := fs.Duration("scan-pause", 400*time.Millisecond, "Extra pause between tokentx pages (free tier is often ~3 req/sec; client also spaces every call)")
 	topHolders := fs.Int("top-holders", 20, "Show this many largest holders (0 = all)")
 	_ = fs.Parse(os.Args[1:])
-
-	apiKeyTrim := strings.TrimSpace(*apiKey)
 
 	if err := validateTokenAddr(*tokenAddr); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -72,11 +68,7 @@ func main() {
 	}
 	meta := tokenMeta{decimals: dec, totalSupply: sup}
 
-	if *maxPages > 0 {
-		fmt.Fprintf(os.Stderr, "note: -max-pages=%d caps transfer history; aggregates may be incomplete.\n", *maxPages)
-	}
-
-	txs, err := client.FetchAllTokenTx(tokenLower, "asc", 1000, *maxPages, *scanPause)
+	txs, err := client.FetchAllTokenTx(*tokenAddr, 1000, *scanPause)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "explorer API: %v\n", err)
 		os.Exit(1)
