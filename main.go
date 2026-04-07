@@ -9,11 +9,11 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aint/cryptotokenlens/internal"
 	"github.com/aint/cryptotokenlens/internal/polygonscan"
 )
 
@@ -46,7 +46,7 @@ func main() {
 	apiKey := fs.String("api-key", getenv("POLYGONSCAN_API_KEY", defaultExplorerAPIKey), "Etherscan API v2 key (overrides POLYGONSCAN_API_KEY; default is built-in)")
 	tokenAddr := fs.String("token", rootsV1Token, "ERC-20 contract address")
 	scanPause := fs.Duration("scan-pause", 400*time.Millisecond, "Extra pause between tokentx pages (free tier is often ~3 req/sec; client also spaces every call)")
-	topHolders := fs.Int("top-holders", 20, "Show this many largest holders (0 = all)")
+	topHolders := fs.Int("top-holders", 15, "Show this many largest holders (0 = all)")
 	_ = fs.Parse(os.Args[1:])
 
 	if err := validateTokenAddr(*tokenAddr); err != nil {
@@ -82,13 +82,7 @@ func main() {
 	}
 	fmt.Println()
 
-	balances, err := polygonscan.ReplayBalances(txs)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "replay balances: %v\n", err)
-		os.Exit(1)
-	}
-
-	printHolders(os.Stdout, balances, supplyBI, dec8, *topHolders)
+	internal.PrintHolders(txs, supplyBI, dec8, *topHolders)
 	firstTS, lastTS, ok := transferTimeBounds(txs)
 	if len(boughtDays) > 0 {
 		printBoughtTimeline(os.Stdout, boughtDays, supplyBI, dec8, firstTS, lastTS, ok, metricFromContract)
@@ -197,41 +191,6 @@ func buildBoughtTimeline(txs []polygonscan.TokenTransfer, tokenAddr string) ([]b
 		rows = append(rows, boughtDayRow{dayUTC: ds, cum: new(big.Int).Set(cum)})
 	}
 	return rows, fromContract
-}
-
-func printHolders(w io.Writer, balances map[string]*big.Int, totalSupply *big.Int, decimals uint8, top int) {
-	type row struct {
-		addr string
-		bal  *big.Int
-	}
-	var rows []row
-	for a, b := range balances {
-		if b.Sign() <= 0 {
-			continue
-		}
-		rows = append(rows, row{a, new(big.Int).Set(b)})
-	}
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].bal.Cmp(rows[j].bal) > 0
-	})
-	if top > 0 && len(rows) > top {
-		rows = rows[:top]
-	}
-	fmt.Fprintf(w, "\nHolders (positive balance): showing %d of %d with non-zero balance\n", len(rows), countNonZero(balances))
-	fmt.Fprintf(w, "%-44s %32s %14s\n", "address", "balance", "% of supply")
-	for _, r := range rows {
-		fmt.Fprintf(w, "%s %32s %13s%%\n", r.addr, formatUnits(r.bal, decimals), pctOf(r.bal, totalSupply))
-	}
-}
-
-func countNonZero(balances map[string]*big.Int) int {
-	n := 0
-	for _, b := range balances {
-		if b.Sign() > 0 {
-			n++
-		}
-	}
-	return n
 }
 
 func printBoughtTimeline(w io.Writer, rows []boughtDayRow, totalSupply *big.Int, decimals uint8, firstTS, lastTS int64, boundsOK bool, fromContract bool) {

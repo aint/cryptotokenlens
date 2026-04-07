@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -204,37 +203,4 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// ReplayBalances rebuilds address balances from transfer rows (wei/raw token units).
-func ReplayBalances(rows []TokenTransfer) (map[string]*big.Int, error) {
-	bal := make(map[string]*big.Int)
-	adjust := func(addr string, delta *big.Int) {
-		if addr == "" {
-			return
-		}
-		a := strings.ToLower(addr)
-		cur := bal[a]
-		if cur == nil {
-			cur = big.NewInt(0)
-		}
-		cur = new(big.Int).Add(cur, delta)
-		bal[a] = cur
-	}
 
-	for _, r := range rows {
-		v, ok := new(big.Int).SetString(r.Value, 10)
-		if !ok {
-			return nil, fmt.Errorf("parse value %q", r.Value)
-		}
-		neg := new(big.Int).Neg(v)
-		from := strings.ToLower(r.From)
-		to := strings.ToLower(r.To)
-		zero := "0x0000000000000000000000000000000000000000"
-		if from != zero {
-			adjust(from, neg)
-		}
-		if to != zero {
-			adjust(to, v)
-		}
-	}
-	return bal, nil
-}
