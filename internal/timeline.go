@@ -31,12 +31,14 @@ func TxTimeBounds(txs []polygonscan.TokenTransfer) (int64, int64) {
 }
 
 // TODO: switch to weeks/months if number of days > 90
-func PrintTimeline(txs []polygonscan.TokenTransfer, tokenAddr string, decimals uint8) {
+func PrintTimeline(txs []polygonscan.TokenTransfer, tokenAddr string, totalSupply *big.Int, decimals uint8) {
 	timeline := buildTimeline(txs, tokenAddr)
 	fmt.Printf("\nTimeline\n")
-	fmt.Printf("%-12s %12s\n", "day", "value")
+	fmt.Printf("%-12s %12s %12s\n", "day", "Δ", "% of supply")
+	cum := big.NewInt(0)
 	for _, r := range timeline {
-		fmt.Printf("%-12s %12s\n", r.Day, FormatBigInt(r.Value, decimals))
+		cum.Add(cum, r.Value)
+		fmt.Printf("%-12s %12s %12s%%\n", r.Day, FormatBigInt(r.Value, decimals), PercentOf(cum, totalSupply))
 	}
 }
 
