@@ -35,8 +35,8 @@ func PrintHolders(txs []polygonscan.TokenTransfer, totalSupply *big.Int, decimal
 	return nil
 }
 
-func GetBalances(txs []polygonscan.TokenTransfer) (balanceMap, error) {
-	balances := make(balanceMap)
+func GetBalances(txs []polygonscan.TokenTransfer) (stringBigIntMap, error) {
+	balances := make(stringBigIntMap)
 	for _, tx := range txs {
 		v, ok := new(big.Int).SetString(tx.Value, 10)
 		if !ok {
@@ -55,10 +55,10 @@ func GetBalances(txs []polygonscan.TokenTransfer) (balanceMap, error) {
 	return balances, nil
 }
 
-type balanceMap map[string]*big.Int
+type stringBigIntMap map[string]*big.Int
 
-func (m balanceMap) filterOutZero() balanceMap {
-	filtered := make(balanceMap)
+func (m stringBigIntMap) filterOutZero() stringBigIntMap {
+	filtered := make(stringBigIntMap)
 	for k, v := range m {
 		if v.Sign() > 0 {
 			filtered[k] = v
@@ -67,7 +67,7 @@ func (m balanceMap) filterOutZero() balanceMap {
 	return filtered
 }
 
-func (m balanceMap) get(key string) *big.Int {
+func (m stringBigIntMap) get(key string) *big.Int {
 	v := m[key]
 	if v == nil {
 		v = big.NewInt(0)
