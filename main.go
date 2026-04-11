@@ -5,11 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"math"
-	"math/big"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,12 +13,21 @@ import (
 	"github.com/aint/cryptotokenlens/internal/polygonscan"
 )
 
-const espaniolaVila9Token = "0x89EbdFaf79308871A24c6992232984b3C84af9A8"
-const montenegroToken = "0xaD4f81D0F2f626A6EA29864F488604e6b5360e2a"
+const (
+	laCasaEspanolaV4Token = "0x7b592d8bb722324f75af834c23e6ad2058b168e1"
+	laCasaEspanolaV6Token = "0xdd36b686a5ff910b5074e3f5483135f19e49f02c"
+	laCasaEspanolaV8Token = "0x223270bbbe4f6dac0dc3e57d985116bdc50616ee"
+	laCasaEspanolaV9Token = "0x89EbdFaf79308871A24c6992232984b3C84af9A8"
+	dukleyGlamping1Token  = "0xaD4f81D0F2f626A6EA29864F488604e6b5360e2a"
+	rootsV1Token          = "0xbde380b4cc582d440255ebd89ff1839dcfad5d7b"
+	rootsV3Token          = "0xc0a4b2e29bd44d3b798a02edc039711f03572739"
+	rootsV4Token          = "0xb2b9f922c0494dbf08636b1dbcf6fcba0878a605"
+	rootsV5Token          = "0x0ef68e86c3c9bc6187c69770053919e6b35991f6"
+)
 
 // defaultExplorerAPIKey is the fallback when POLYGONSCAN_API_KEY and -api-key are empty.
 // Prefer env/flag in shared repos so the key is not committed; rotate if this key leaks.
-const defaultExplorerAPIKey = "???"
+const defaultExplorerAPIKey = ""
 
 func getenv(key, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
@@ -55,274 +60,32 @@ func main() {
 	}
 
 	client := polygonscan.NewClinet(*apiKey)
-
-	meta, err := client.GetTokenMetadata(*tokenAddr)
+	totalSupply, err := client.GetTotalSupply(*tokenAddr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "explorer token metadata: %v\n", err)
 		os.Exit(1)
 	}
-	supplyBI := meta.TotalSupply
-	dec8 := meta.Decimals
-
 	txs, err := client.FetchAllTokenTx(*tokenAddr, 1000, *scanPause)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "explorer API: %v\n", err)
 		os.Exit(1)
 	}
-	boughtDays, metricFromContract := buildBoughtTimeline(txs, *tokenAddr)
+	decimal, err := internal.GetDecimal(txs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "get decimal: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("Token %s\n", *tokenAddr)
-	fmt.Printf("totalSupply: %s (%d whole tokens as int64, %s raw)\n", formatTokenAmountExact(supplyBI, dec8), meta.TotalSupply, supplyBI.String())
-	fmt.Printf("tokentx rows (fetched): %d\n", len(txs))
-	if len(boughtDays) > 0 {
-		lastCum := boughtDays[len(boughtDays)-1].cum
-		fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", pctBoughtDisplay(lastCum, supplyBI), formatTokenAmountExact(lastCum, dec8))
+	fmt.Printf("total supply: %s\n", internal.FormatBigInt(totalSupply, decimal))
+	boughtAmount := internal.BoughtAmount(txs, *tokenAddr)
+	if boughtAmount != nil {
+		fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", internal.PercentOf(boughtAmount, totalSupply), internal.FormatBigInt(boughtAmount, decimal))
 	} else {
 		fmt.Printf("%% bought (cumulative): n/a (no transfer window in fetched history)\n")
 	}
 	fmt.Println()
 
-	internal.PrintHolders(txs, supplyBI, dec8, *topHolders)
-	firstTS, lastTS, ok := transferTimeBounds(txs)
-	if len(boughtDays) > 0 {
-		printBoughtTimeline(os.Stdout, boughtDays, supplyBI, dec8, firstTS, lastTS, ok, metricFromContract)
-	}
-}
-
-const zeroAddr0x = "0x0000000000000000000000000000000000000000"
-
-type boughtDayRow struct {
-	dayUTC string
-	cum    *big.Int // cumulative “bought” amount through end of this UTC day (see buildBoughtTimeline)
-}
-
-func transferTimeBounds(txs []polygonscan.TokenTransfer) (first, last int64, ok bool) {
-	for _, t := range txs {
-		ts, err := strconv.ParseInt(t.TimeStamp, 10, 64)
-		if err != nil {
-			continue
-		}
-		if !ok || ts < first {
-			first = ts
-		}
-		if !ok || ts > last {
-			last = ts
-		}
-		ok = true
-	}
-	return first, last, ok
-}
-
-// buildBoughtTimeline lists each UTC day from first→last transfer.
-// If any transfer has from == tokenAddr (supply leaving the contract), %bought uses that cumulative total
-// (typical sale/inventory). Otherwise it falls back to cumulative mint-from-0x0.
-func buildBoughtTimeline(txs []polygonscan.TokenTransfer, tokenAddr string) ([]boughtDayRow, bool) {
-	tokenAddr = strings.ToLower(strings.TrimSpace(tokenAddr))
-	mintByDay := make(map[string]*big.Int)
-	outByDay := make(map[string]*big.Int)
-	var minDay, maxDay time.Time
-	gotBound := false
-
-	for _, t := range txs {
-		tsi, err := strconv.ParseInt(t.TimeStamp, 10, 64)
-		if err != nil {
-			continue
-		}
-		tm := time.Unix(tsi, 0).UTC()
-		dayStr := tm.Format("2006-01-02")
-		day0, err := time.ParseInLocation("2006-01-02", dayStr, time.UTC)
-		if err != nil {
-			continue
-		}
-		if !gotBound {
-			minDay, maxDay = day0, day0
-			gotBound = true
-		} else {
-			if day0.Before(minDay) {
-				minDay = day0
-			}
-			if day0.After(maxDay) {
-				maxDay = day0
-			}
-		}
-
-		v, ok := new(big.Int).SetString(t.Value, 10)
-		if !ok {
-			continue
-		}
-
-		from := strings.ToLower(strings.TrimSpace(t.From))
-		if from == tokenAddr {
-			if outByDay[dayStr] == nil {
-				outByDay[dayStr] = big.NewInt(0)
-			}
-			outByDay[dayStr].Add(outByDay[dayStr], v)
-		}
-		if from == zeroAddr0x {
-			if mintByDay[dayStr] == nil {
-				mintByDay[dayStr] = big.NewInt(0)
-			}
-			mintByDay[dayStr].Add(mintByDay[dayStr], v)
-		}
-	}
-
-	if !gotBound {
-		return nil, false
-	}
-
-	totalOut := big.NewInt(0)
-	for _, v := range outByDay {
-		totalOut.Add(totalOut, v)
-	}
-
-	series := outByDay
-	fromContract := totalOut.Sign() > 0
-	if !fromContract {
-		series = mintByDay
-	}
-
-	cum := big.NewInt(0)
-	var rows []boughtDayRow
-	for d := minDay; !d.After(maxDay); d = d.AddDate(0, 0, 1) {
-		ds := d.Format("2006-01-02")
-		if m := series[ds]; m != nil {
-			cum = new(big.Int).Add(cum, m)
-		}
-		rows = append(rows, boughtDayRow{dayUTC: ds, cum: new(big.Int).Set(cum)})
-	}
-	return rows, fromContract
-}
-
-func printBoughtTimeline(w io.Writer, rows []boughtDayRow, totalSupply *big.Int, decimals uint8, firstTS, lastTS int64, boundsOK bool, fromContract bool) {
-	if fromContract {
-		fmt.Fprintf(w, "\nBought timeline (UTC): cumulative %% of supply that left the token contract (Transfer from token address).\n")
-	} else {
-		fmt.Fprintf(w, "\nBought timeline (UTC): cumulative %% of supply minted from 0x0 (no transfers from token contract in data).\n")
-	}
-	fmt.Fprintf(w, "TokensPurchased = cumulative token count (same basis as %%bought), exact from raw amount / 10^decimals.\n")
-	fmt.Fprintf(w, "Δ = TokensPurchased minus previous calendar day (tokens added that UTC day). Only days with Δ ≠ 0 are listed.\n\n")
-	hdr := "%-12s %12s %40s %16s\n"
-	fmt.Fprintf(w, hdr, "day", "%bought", "TokensPurchased", "Δ")
-	line := "%-12s %11s%% %40s %16s\n"
-	var lastCum *big.Int
-	var prevCum *big.Int
-	for _, r := range rows {
-		lastCum = r.cum
-		oldPrev := prevCum
-		var base *big.Int
-		if oldPrev == nil {
-			base = big.NewInt(0)
-		} else {
-			base = oldPrev
-		}
-		d := new(big.Int).Sub(r.cum, base)
-		prevCum = r.cum
-		if d.Sign() == 0 {
-			continue
-		}
-		tok := formatTokenAmountExact(r.cum, decimals)
-		delta := formatDayDelta(r.cum, oldPrev, decimals)
-		fmt.Fprintf(w, line, r.dayUTC, pctBoughtDisplay(r.cum, totalSupply), tok, delta)
-	}
-
-	eta := linearETA100(firstTS, lastTS, lastCum, totalSupply, boundsOK, decimals)
-	fmt.Fprintf(w, "\n100%% bought — linear ETA (below 100%%) or elapsed only (already ≥100%%); both include first→last transfer window in fetched history: %s\n", eta)
-}
-
-func pctBoughtDisplay(cum, supply *big.Int) string {
-	if supply == nil || supply.Sign() == 0 {
-		return "0"
-	}
-	if cum.Cmp(supply) >= 0 {
-		return "100.0000"
-	}
-	return pctOf(cum, supply)
-}
-
-// linearETA100 assumes progress 0%% at firstTS and cum/supply at lastTS; extrapolates to 100%%.
-func linearETA100(firstTS, lastTS int64, cumMint, totalSupply *big.Int, boundsOK bool) string {
-	if !boundsOK || totalSupply == nil || totalSupply.Sign() == 0 {
-		return "n/a"
-	}
-	if cumMint.Sign() <= 0 {
-		return "n/a (0%% bought in the chosen metric)"
-	}
-	if cumMint.Cmp(totalSupply) >= 0 {
-		return "n/a (already ≥100%% — projection not needed)"
-	}
-	p := new(big.Rat).SetFrac(cumMint, totalSupply)
-	elapsed := lastTS - firstTS
-	if elapsed <= 0 {
-		t := time.Unix(lastTS, 0).UTC().Format(time.RFC3339)
-		return fmt.Sprintf("%s (no elapsed window between first/last tx)", t)
-	}
-	one := big.NewRat(1, 1)
-	remFrac := new(big.Rat).Sub(one, p)
-	secRem := new(big.Rat).Mul(big.NewRat(elapsed, 1), remFrac)
-	secRem.Quo(secRem, p)
-	sf, _ := secRem.Float64()
-	if math.IsInf(sf, 0) || math.IsNaN(sf) || sf < 0 {
-		return "n/a"
-	}
-	eta := time.Unix(lastTS, 0).UTC().Add(time.Duration(sf * float64(time.Second)))
-	return eta.Format(time.RFC3339)
-}
-
-func formatUnits(i *big.Int, dec uint8) string {
-	if i == nil {
-		return "0"
-	}
-	return formatTokenAmountExact(i, dec)
-}
-
-// formatDayDelta formats cum − prevCum in human token units; prevCum nil means previous day had cumulative 0.
-func formatDayDelta(cum, prevCum *big.Int, decimals uint8) string {
-	if cum == nil {
-		return "0"
-	}
-	var base *big.Int
-	if prevCum == nil {
-		base = big.NewInt(0)
-	} else {
-		base = prevCum
-	}
-	d := new(big.Int).Sub(cum, base)
-	if d.Sign() == 0 {
-		return "0"
-	}
-	if d.Sign() > 0 {
-		return "+" + formatTokenAmountExact(d, decimals)
-	}
-	return "-" + formatTokenAmountExact(new(big.Int).Neg(d), decimals)
-}
-
-// formatTokenAmountExact formats raw ERC-20 units as a decimal token amount using only integer math (no float drift).
-func formatTokenAmountExact(raw *big.Int, decimals uint8) string {
-	if raw == nil || raw.Sign() == 0 {
-		return "0"
-	}
-	if decimals == 0 {
-		return raw.String()
-	}
-	denom := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
-	ip := new(big.Int).Quo(raw, denom)
-	fp := new(big.Int).Mod(new(big.Int).Set(raw), denom)
-	if fp.Sign() == 0 {
-		return ip.String()
-	}
-	frac := fp.Text(10)
-	for len(frac) < int(decimals) {
-		frac = "0" + frac
-	}
-	frac = strings.TrimRight(frac, "0")
-	return ip.String() + "." + frac
-}
-
-func pctOf(part, whole *big.Int) string {
-	if whole.Sign() == 0 {
-		return "0"
-	}
-	r := new(big.Rat).SetFrac(part, whole)
-	r = new(big.Rat).Mul(r, big.NewRat(100, 1))
-	return r.FloatString(4)
+	internal.PrintHolders(txs, totalSupply, decimal, *topHolders)
+	internal.PrintTimeline(txs, *tokenAddr, totalSupply, decimal)
 }
