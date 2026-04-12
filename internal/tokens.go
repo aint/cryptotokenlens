@@ -1,0 +1,28 @@
+package internal
+
+var Tokens = map[string]string{
+	"La Casa Española Villa 4": "0x7b592d8bb722324f75af834c23e6ad2058b168e1",
+	"La Casa Española Villa 6": "0xdd36b686a5ff910b5074e3f5483135f19e49f02c",
+	"La Casa Española Villa 8": "0x223270bbbe4f6dac0dc3e57d985116bdc50616ee",
+	"La Casa Española Villa 9": "0x89ebdfaf79308871a24c6992232984b3c84af9a8",
+	"Dukley Glamping 1": "0xad4f81d0f2f626a6ea29864f488604e6b5360e2a",
+	"Roots Villa 1": "0xbde380b4cc582d440255ebd89ff1839dcfad5d7b",
+	"Roots Villa 3": "0xc0a4b2e29bd44d3b798a02edc039711f03572739",
+	"Roots Villa 4": "0xb2b9f922c0494dbf08636b1dbcf6fcba0878a605",
+	"Roots Villa 5": "0x0ef68e86c3c9bc6187c69770053919e6b35991f6",
+	"CEMAGI unit 3.44": "0x852b6995628b760c84bdd02bc143b48288d4dd3a",
+	"CEMAGI unit 3.46": "0x2b7dca2c2bafdb1dac0e01068091590fbe09e478",
+	"CASCADE villa 3": "0xd5551375d5ba01ddbcb38d20ac40671f26e6ada5",
+	"CASCADE villa 2": "0x5e55b3e941f42732f1b941f2f673dc8811355e5e",
+	"Bali Balance Ocean villa 3": "0x1e3cf2eeaa6d5973e2da6fe03600ba55870dd69b",
+	"Bali Balance Ocean villa 4": "0x17236ed296fbd00d3dfa016879833776dd207fd6",
+	"Bingin Magic Story villa 3": "0xe5f846592a58bcfce912bc6fc594649397b6f519",
+	"Oasis Royal Collection 11a": "0xa26f11748ed29b3fd62e1d8e231d277a0980fb12",
+	"Taryan Dragon - Jungle View": "0x4bd4d7003a6ce76b9ad3ee364a29801c170b1ff5",
+	"AWWA Hotel by Ribas B14": "0x216301b87404a5839bf7b8b94c646c4eb96fec79",
+	"AWWA Hotel by Ribas B22": "0xe725a80f426a7d7f5734ba69ccec507251109d09",
+	"AWWA Hotel by Ribas A16": "0xdb8fc93a993e2ab0d9f7d520fd4e616cfb1d85fd",
+	"Oasis Royal Collection 18b": "0x1dac5a4a0e566fb2674a6b7e1cdaf2c07716eeed",
+	"Mountain Retreat by Dukley": "0x51343ee93059cbb11c4bf969a643e09117b3af6b",
+	"Ecoverse Suite": "0x30ed65e470be4f351abf5311769505e3f977deca",
+}
