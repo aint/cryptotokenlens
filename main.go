@@ -60,6 +60,6 @@ func main() {
 	fmt.Println()
 
 	internal.PrintHolders(txs, totalSupply, decimal, *topHolders)
-	internal.PrintTimeline(txs, *tokenAddr, totalSupply, decimal)
+	internal.PrintDailySeries(txs, *tokenAddr, totalSupply, decimal)
 	internal.PrintETA(txs, *tokenAddr, decimal, totalSupply, boughtAmount)
 }

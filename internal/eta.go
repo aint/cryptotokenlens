@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/aint/cryptotokenlens/internal/polygonscan"
@@ -19,30 +20,30 @@ func PrintETA(txs []polygonscan.TokenTransfer, tokenAddr string, decimals uint8,
 		return
 	}
 
-	timeline := buildTimeline(txs, tokenAddr)
-	if len(timeline) < 7 {
+	dailySeries, err := buildDailySeries(txs, tokenAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "build timeline: %v\n", err)
+		return
+	}
+	if len(dailySeries) < 7 {
 		fmt.Println("ETA: n/a (not enough data to calculate ETA)")
 		return
 	}
-
-	start, _ := time.ParseInLocation("2006-01-02", timeline[0].Day, time.UTC)
-	end, _ := time.ParseInLocation("2006-01-02", timeline[len(timeline)-1].Day, time.UTC)
-	entries := denseDailyDeltas(timeline, start, end)
 
 	type trailingWindow struct {
 		name string
 		days int
 	}
 	windows := []trailingWindow{
-		{"last 7 UTC days", min(7, len(entries))},
-		{"last 30 UTC days", min(30, len(entries))},
-		{"full history (all calendar days)", len(entries)},
+		{"last 7 UTC days", min(7, len(dailySeries))},
+		{"last 30 UTC days", min(30, len(dailySeries))},
+		{"full history (all calendar days)", len(dailySeries)},
 	}
 
 	fmt.Println("ETA extrapolation (constant rate after last data day; each row uses trailing w-day mean of daily Δ):")
 
 	for _, w := range windows {
-		eta, days, rate, err := etaFromTrailingWindow(entries, remaining, w.days, decimals)
+		eta, days, rate, err := etaFromTrailingWindow(dailySeries, remaining, w.days, decimals)
 		if err != nil {
 			fmt.Printf("  %s (w=%d): n/a — %s\n", w.name, w.days, err.Error())
 			continue
@@ -51,11 +52,11 @@ func PrintETA(txs []polygonscan.TokenTransfer, tokenAddr string, decimals uint8,
 	}
 }
 
-func etaFromTrailingWindow(entries []etaEntry, remaining *big.Int, w int, decimals uint8) (time.Time, int64, string, error) {
+func etaFromTrailingWindow(dailySeries []dailyPoint, remaining *big.Int, w int, decimals uint8) (time.Time, int64, string, error) {
 	sum := big.NewInt(0)
-	from := len(entries) - w
-	for j := from; j < len(entries); j++ {
-		sum.Add(sum, entries[j].Value)
+	from := len(dailySeries) - w
+	for j := from; j < len(dailySeries); j++ {
+		sum.Add(sum, dailySeries[j].Value)
 	}
 	// sum / w = avg daily Δ in the window
 	avgRat := new(big.Rat).SetFrac(new(big.Int).Set(sum), big.NewInt(int64(w)))
@@ -75,34 +76,10 @@ func etaFromTrailingWindow(entries []etaEntry, remaining *big.Int, w int, decima
 		return time.Time{}, 0, "", fmt.Errorf("day count out of int64 range")
 	}
 
-	lastDay := entries[len(entries)-1].Day
+	lastDay := dailySeries[len(dailySeries)-1].Day
 	eta := lastDay.AddDate(0, 0, int(daysInt))
 	rate := FormatBigInt(new(big.Int).Quo(sum, big.NewInt(int64(w))), decimals)
 	return eta, daysInt, rate, nil
-}
-
-type etaEntry struct {
-	Day   time.Time
-	Value *big.Int // daily Δ (raw units) leaving token contract that UTC day
-}
-
-// denseDailyDeltas walks every UTC calendar day from start through end inclusive and assigns
-// each day's Δ from the sorted timeline (or zero if no row for that day).
-func denseDailyDeltas(timeline []timelineRow, start, end time.Time) []etaEntry {
-	var out []etaEntry
-	ti := 0
-	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-		ds := d.Format("2006-01-02")
-		var v *big.Int
-		if ti < len(timeline) && timeline[ti].Day == ds {
-			v = new(big.Int).Set(timeline[ti].Value)
-			ti++
-		} else {
-			v = big.NewInt(0)
-		}
-		out = append(out, etaEntry{Day: d, Value: v})
-	}
-	return out
 }
 
 // ceilRatToInt64 returns ⌈x⌉ for x ≥ 0; for huge values beyond int64, returns -1.
