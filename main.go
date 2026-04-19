@@ -29,16 +29,16 @@ func main() {
 	topHolders := fs.Int("top-holders", 15, "Show this many largest holders (0 = all)")
 	_ = fs.Parse(os.Args[1:])
 
-	x := internal.Tokens["La Casa Española Villa 6"]
-	tokenAddr := &x
+	token := internal.TokensMap[internal.LaCasaEspañolaVilla9]
+	tokenAddr := token.Address
 
 	client := polygonscan.NewClinet(*apiKey)
-	totalSupply, err := client.GetTotalSupply(*tokenAddr)
+	totalSupply, err := client.GetTotalSupply(tokenAddr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "explorer token metadata: %v\n", err)
 		os.Exit(1)
 	}
-	txs, err := client.FetchAllTokenTx(*tokenAddr, 1000, *scanPause)
+	txs, err := client.FetchAllTokenTx(tokenAddr, 1000, *scanPause)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "explorer API: %v\n", err)
 		os.Exit(1)
@@ -49,9 +49,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Token %s\n", *tokenAddr)
+	fmt.Printf("Token %s\n", tokenAddr)
 	fmt.Printf("total supply: %s\n", internal.FormatBigInt(totalSupply, decimal))
-	boughtAmount := internal.BoughtAmount(txs, *tokenAddr)
+	boughtAmount := internal.BoughtAmount(txs, tokenAddr)
 	if boughtAmount != nil {
 		fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", internal.PercentOf(boughtAmount, totalSupply), internal.FormatBigInt(boughtAmount, decimal))
 	} else {
@@ -60,7 +60,8 @@ func main() {
 	fmt.Println()
 
 	internal.PrintHolders(txs, totalSupply, decimal, *topHolders)
-	internal.PrintDailySeries(txs, *tokenAddr, totalSupply, decimal)
-	internal.PrintETA(txs, *tokenAddr, decimal, totalSupply, boughtAmount)
+	internal.PrintDailySeries(txs, tokenAddr, totalSupply, decimal)
+	internal.PrintETA(txs, tokenAddr, decimal, totalSupply, boughtAmount)
+
 	internal.WriteDailySeriesHTML(fmt.Sprintf("%s.html", token.Name), txs, tokenAddr, decimal)
 }
