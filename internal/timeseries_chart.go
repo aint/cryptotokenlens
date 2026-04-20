@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -9,6 +10,12 @@ import (
 
 	"github.com/aint/cryptotokenlens/internal/polygonscan"
 )
+
+//go:embed timeseries_chart.html
+var timeseriesChartHTML []byte
+
+// chartDataPlaceholder must match timeseries_chart.html exactly.
+var chartDataPlaceholder = []byte("__CHART_DATA_JSON__")
 
 // WriteDailySeriesHTML writes a single HTML file with embedded Chart.js (CDN) and
 // daily + cumulative series from buildDailySeries (human token units per decimals).
@@ -39,11 +46,12 @@ func WriteDailySeriesHTML(path string, txs []polygonscan.TokenTransfer, tokenAdd
 		return
 	}
 
-	var buf bytes.Buffer
-	buf.WriteString(htmlChartPrefix)
-	buf.Write(jsonBytes)
-	buf.WriteString(htmlChartSuffix)
-	err = os.WriteFile(path, buf.Bytes(), 0o644)
+	if !bytes.Contains(timeseriesChartHTML, chartDataPlaceholder) {
+		fmt.Fprintf(os.Stderr, "timeseries chart template missing %s\n", string(chartDataPlaceholder))
+		return
+	}
+	out := bytes.ReplaceAll(timeseriesChartHTML, chartDataPlaceholder, jsonBytes)
+	err = os.WriteFile(path, out, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "write file: %v\n", err)
 		return
@@ -67,83 +75,3 @@ func rawToHumanFloat(raw *big.Int, decimals uint8) float64 {
 	f, _ := r.Float64()
 	return f
 }
-
-const htmlChartPrefix = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Daily series</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
-<style>
-body { font-family: system-ui, sans-serif; margin: 16px; }
-h1 { font-size: 1.1rem; font-weight: 600; }
-.chart-wrap {
-	position: relative;
-	width: 100%;
-	height: 420px;
-	max-width: 100%;
-}
-.chart-wrap canvas { display: block; max-width: 100%; }
-</style>
-</head>
-<body>
-<h1 id="title"></h1>
-<div class="chart-wrap"><canvas id="c"></canvas></div>
-<script>
-const chartData = `
-
-const htmlChartSuffix = `;
-document.getElementById("title").textContent = chartData.title || "Daily series";
-const ctx = document.getElementById("c");
-new Chart(ctx, {
-  type: "line",
-  data: {
-    labels: chartData.labels,
-    datasets: [
-      {
-        label: "Daily Δ (tokens)",
-        data: chartData.daily,
-        borderColor: "rgb(75, 192, 192)",
-        backgroundColor: "rgba(75, 192, 192, 0.2)",
-        tension: 0,
-        stepped: "before",
-        fill: false,
-        yAxisID: "y"
-      },
-      {
-        label: "Cumulative (tokens)",
-        data: chartData.cumulative,
-        borderColor: "rgb(255, 99, 132)",
-        tension: 0.05,
-        fill: false,
-        yAxisID: "y1"
-      }
-    ]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
-    scales: {
-      x: { ticks: { maxTicksLimit: 14 } },
-      y: {
-        type: "linear",
-        position: "left",
-        beginAtZero: true,
-        title: { display: true, text: "Daily Δ" }
-      },
-      y1: {
-        type: "linear",
-        position: "right",
-        beginAtZero: true,
-        grid: { drawOnChartArea: false },
-        title: { display: true, text: "Cumulative" }
-      }
-    }
-  }
-});
-</script>
-</body>
-</html>
-`

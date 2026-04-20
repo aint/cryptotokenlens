@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Daily series</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<style>
+body { font-family: system-ui, sans-serif; margin: 16px; }
+h1 { font-size: 1.1rem; font-weight: 600; }
+.chart-wrap {
+	position: relative;
+	width: 100%;
+	height: 420px;
+	max-width: 100%;
+}
+.chart-wrap canvas { display: block; max-width: 100%; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div class="chart-wrap"><canvas id="c"></canvas></div>
+<script>
+const chartData = __CHART_DATA_JSON__;
+document.getElementById("title").textContent = chartData.title || "Daily series";
+const ctx = document.getElementById("c");
+new Chart(ctx, {
+  type: "line",
+  data: {
+    labels: chartData.labels,
+    datasets: [
+      {
+        label: "Daily Δ (tokens)",
+        data: chartData.daily,
+        borderColor: "rgb(75, 192, 192)",
+        backgroundColor: "rgba(75, 192, 192, 0.2)",
+        tension: 0,
+        stepped: "before",
+        fill: false,
+        yAxisID: "y"
+      },
+      {
+        label: "Cumulative (tokens)",
+        data: chartData.cumulative,
+        borderColor: "rgb(255, 99, 132)",
+        tension: 0.05,
+        fill: false,
+        yAxisID: "y1"
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    scales: {
+      x: { ticks: { maxTicksLimit: 14 } },
+      y: {
+        type: "linear",
+        position: "left",
+        beginAtZero: true,
+        title: { display: true, text: "Daily Δ" }
+      },
+      y1: {
+        type: "linear",
+        position: "right",
+        beginAtZero: true,
+        grid: { drawOnChartArea: false },
+        title: { display: true, text: "Cumulative" }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
