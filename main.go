@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"math/big"
 
 	"github.com/aint/cryptotokenlens/internal"
 	"github.com/aint/cryptotokenlens/internal/polygonscan"
@@ -49,15 +50,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Token %s\n", tokenAddr)
-	fmt.Printf("total supply: %s\n", internal.FormatBigInt(totalSupply, decimal))
 	boughtAmount := internal.BoughtAmount(txs, tokenAddr)
-	if boughtAmount != nil {
-		fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", internal.PercentOf(boughtAmount, totalSupply), internal.FormatBigInt(boughtAmount, decimal))
-	} else {
-		fmt.Printf("%% bought (cumulative): n/a (no transfer window in fetched history)\n")
-	}
-	fmt.Println()
+	printTokenInfo(token, totalSupply, boughtAmount, decimal)
 
 	internal.PrintHolders(txs, totalSupply, decimal, *topHolders)
 
@@ -66,6 +60,29 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Build daily series: %v\n", err)
 		os.Exit(1)
 	}
+	printDailySeries(dailySeries, decimal)
+
+	etas, err := internal.MovingAverageETA(dailySeries, decimal, totalSupply, boughtAmount)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Calculate ETA: %v\n", err)
+		os.Exit(1)
+	}
+	printETAs(etas)
+
+}
+
+func printTokenInfo(token internal.Token, totalSupply, boughtAmount *big.Int, decimal uint8) {
+	fmt.Printf("Token %s\n", token.Address)
+	fmt.Printf("total supply: %s\n", internal.FormatBigInt(totalSupply, decimal))
+	if boughtAmount != nil {
+		fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", internal.PercentOf(boughtAmount, totalSupply), internal.FormatBigInt(boughtAmount, decimal))
+	} else {
+		fmt.Printf("%% bought (cumulative): n/a (no transfer window in fetched history)\n")
+	}
+	fmt.Println()
+}
+
+func printDailySeries(dailySeries []internal.DailyPoint, decimal uint8) {
 	fmt.Printf("\nTimeline\n")
 	fmt.Printf("%-12s %12s %12s\n", "day", "Δ", "% of supply")
 	for _, p := range dailySeries {
@@ -74,15 +91,10 @@ func main() {
 		}
 		fmt.Printf("%-12s %12s %12.2f%%\n", p.Day.Format(time.DateOnly), internal.FormatBigInt(p.Value, decimal), p.CumPercent)
 	}
+}
 
-	etas, err := internal.MovingAverageETA(dailySeries, decimal, totalSupply, boughtAmount)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Calculate ETA: %v\n", err)
-		os.Exit(1)
-	}
+func printETAs(etas []internal.ETA) {
 	for _, eta := range etas {
 		fmt.Printf("ETA: %s: %s tokens/day → ~%d calendar days → %s\n", eta.Window, eta.Rate, eta.Days, eta.Time.Format(time.DateOnly))
 	}
-
-	internal.WriteDailySeriesHTML(fmt.Sprintf("%s.html", token.Name), dailySeries, token.Name, decimal)
 }
