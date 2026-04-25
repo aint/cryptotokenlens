@@ -6,10 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
-	"math/big"
 
 	"github.com/aint/cryptotokenlens/internal"
-	"github.com/aint/cryptotokenlens/internal/polygonscan"
 )
 
 // defaultExplorerAPIKey is the fallback when POLYGONSCAN_API_KEY and -api-key are empty.
@@ -30,55 +28,37 @@ func main() {
 	topHolders := fs.Int("top-holders", 15, "Show this many largest holders (0 = all)")
 	_ = fs.Parse(os.Args[1:])
 
-	token := internal.TokensMap[internal.LaCasaEspañolaVilla9]
-	tokenAddr := token.Address
-
-	client := polygonscan.NewClinet(*apiKey)
-	totalSupply, err := client.GetTotalSupply(tokenAddr)
+	token, err := internal.NewToken(internal.LaCasaEspañolaVilla9, *apiKey, *scanPause)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "explorer token metadata: %v\n", err)
-		os.Exit(1)
-	}
-	txs, err := client.FetchAllTokenTx(tokenAddr, 1000, *scanPause)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "explorer API: %v\n", err)
-		os.Exit(1)
-	}
-	decimal, err := internal.GetDecimal(txs)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "get decimal: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create token: %v\n", err)
 		os.Exit(1)
 	}
 
-	boughtAmount := internal.BoughtAmount(txs, tokenAddr)
-	printTokenInfo(token, totalSupply, boughtAmount, decimal)
+	printTokenInfo(token)
 
-	internal.PrintHolders(txs, totalSupply, decimal, *topHolders)
+	internal.PrintHolders(token.Txs, token.TotalSupplyRaw, token.Decimal, *topHolders)
 
-	dailySeries, err := internal.DailySeries(txs, tokenAddr, totalSupply)
+	dailySeries, err := internal.DailySeries(token.Txs, token.Address, token.TotalSupplyRaw)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Build daily series: %v\n", err)
 		os.Exit(1)
 	}
-	printDailySeries(dailySeries, decimal)
+	printDailySeries(dailySeries, token.Decimal)
 
-	etas, err := internal.MovingAverageETA(dailySeries, decimal, totalSupply, boughtAmount)
+	etas, err := internal.MovingAverageETA(dailySeries, token.Decimal, token.TotalSupplyRaw, token.BoughtRaw)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Calculate ETA: %v\n", err)
 		os.Exit(1)
 	}
 	printETAs(etas)
 
+	internal.WriteDailySeriesHTML(fmt.Sprintf("%s.html", token.Name), dailySeries, etas, token.Name, token.Decimal)
 }
 
-func printTokenInfo(token internal.Token, totalSupply, boughtAmount *big.Int, decimal uint8) {
-	fmt.Printf("Token %s\n", token.Address)
-	fmt.Printf("total supply: %s\n", internal.FormatBigInt(totalSupply, decimal))
-	if boughtAmount != nil {
-		fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", internal.PercentOf(boughtAmount, totalSupply), internal.FormatBigInt(boughtAmount, decimal))
-	} else {
-		fmt.Printf("%% bought (cumulative): n/a (no transfer window in fetched history)\n")
-	}
+func printTokenInfo(token internal.Token) {
+	fmt.Printf("Token %s, %s\n", token.Address, token.Name)
+	fmt.Printf("total supply: %s\n", internal.FormatBigInt(token.TotalSupplyRaw, token.Decimal))
+	fmt.Printf("%% bought (cumulative): %s%% (%s tokens)\n", internal.PercentOf(token.BoughtRaw, token.TotalSupplyRaw), internal.FormatBigInt(token.BoughtRaw, token.Decimal))
 	fmt.Printf("Expected exit: %s\n", token.ETA.String())
 	fmt.Println()
 }

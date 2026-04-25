@@ -1,5 +1,17 @@
 package internal
 
+import (
+	"fmt"
+	"math/big"
+	"os"
+	"strings"
+	"time"
+	"errors"
+	"strconv"
+
+	"github.com/aint/cryptotokenlens/internal/polygonscan"
+)
+
 const (
 	LaCasaEspañolaVilla4 = "La Casa Española Villa 4"
 	LaCasaEspañolaVilla6 = "La Casa Española Villa 6"
@@ -28,8 +40,13 @@ const (
 )
 
 type Token struct {
-	Name string
-	Address string
+	Name           string
+	Address        string
+	Txs            []polygonscan.TokenTransfer
+	TotalSupplyRaw *big.Int
+	BoughtRaw      *big.Int
+	RemainingRaw   *big.Int
+	Decimal        uint8
 	ETA            YearQuarter
 }
 
@@ -42,7 +59,7 @@ func (yq YearQuarter) String() string {
 	return fmt.Sprintf("%d Q%d", yq.Year, yq.Quarter)
 }
 
-var TokensMap = map[string]Token{
+var tokens = map[string]Token{
 	LaCasaEspañolaVilla4: {
 		Name: LaCasaEspañolaVilla4,
 		Address: "0x7b592d8bb722324f75af834c23e6ad2058b168e1",
@@ -163,4 +180,62 @@ var TokensMap = map[string]Token{
 		Address: "0x30ed65e470be4f351abf5311769505e3f977deca",
 		ETA: YearQuarter{ Year: 2026, Quarter: 2 },
 	},
+}
+
+func NewToken(name, polygonScanAPIKey string, scanPause time.Duration) (Token, error) {
+	token := tokens[name]
+	client := polygonscan.NewClinet(polygonScanAPIKey)
+	var err error
+	token.TotalSupplyRaw, err = client.GetTotalSupply(token.Address)
+	if err != nil {
+		return Token{}, fmt.Errorf("get total supply: %v", err)
+	}
+
+	token.Txs, err = client.FetchAllTokenTx(token.Address, 1000, scanPause)
+	if err != nil {
+		return Token{}, fmt.Errorf("fetch all token tx: %v", err)
+	}
+	if len(token.Txs) == 0 {
+		return Token{}, fmt.Errorf("no transactions found")
+	}
+
+	token.Decimal, err = token.decimal()
+	if err != nil {
+		return Token{}, fmt.Errorf("get decimal: %v", err)
+	}
+
+	token.BoughtRaw = token.boughtRaw()
+	token.RemainingRaw = new(big.Int).Sub(token.TotalSupplyRaw, token.BoughtRaw)
+
+	return token, nil
+}
+
+func (token *Token) boughtRaw() *big.Int {
+	boughtAmount := big.NewInt(0)
+	for _, t := range token.Txs {
+		v, ok := new(big.Int).SetString(t.Value, 10)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "parse value %q\n", t.Value)
+			continue
+		}
+
+		from := strings.ToLower(t.From)
+		if from == token.Address {
+			boughtAmount.Add(boughtAmount, v)
+		}
+	}
+
+	return boughtAmount
+}
+
+func (token *Token) decimal() (uint8, error) {
+	decimalStr := strings.TrimSpace(token.Txs[0].TokenDecimal)
+	if decimalStr == "" {
+		return 0, errors.New("decimal missing")
+	}
+	decimal, err := strconv.ParseUint(decimalStr, 10, 8)
+	if err != nil {
+		return 0, fmt.Errorf("parse decimal %q: %w", decimalStr, err)
+	}
+	return uint8(decimal), nil
 }
