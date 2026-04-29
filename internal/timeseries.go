@@ -59,6 +59,9 @@ func DailySeries(txs []polygonscan.TokenTransfer, tokenAddr string, totalSupply 
 			big.NewRat(100, 1),
 		).Float64()
 		dailySeries = append(dailySeries, DailyPoint{Day: d, Value: value, CumValue: cumValue, CumPercent: pct})
+		if cumValue.Cmp(totalSupply) == 0 {
+			break
+		}
 	}
 
 	return dailySeries, nil
