@@ -13,19 +13,21 @@ var trailingWindows = map[string]int{
 }
 
 // MovingAverageETA returns up to three point estimates (7-day, 30-day, lifetime trailing average of daily Δ).
-func MovingAverageETA(dailySeries []DailyPoint, decimals uint8, totalSupply, boughtAmount *big.Int) ([]ETA, error) {
-	if boughtAmount == nil {
-		boughtAmount = big.NewInt(0)
+func MovingAverageETA(dailySeries []DailyPoint, token Token) ([]ETA, error) {
+	if token.BoughtRaw == nil {
+		token.BoughtRaw = big.NewInt(0)
 	}
-	remaining := new(big.Int).Sub(totalSupply, boughtAmount)
+	remaining := new(big.Int).Sub(token.TotalSupplyRaw, token.BoughtRaw)
 	if remaining.Sign() <= 0 {
-		return nil, fmt.Errorf("cumulative bought already ≥ totalSupply")
+		fmt.Println("No ETA: cumulative bought already ≥ total supply")
+		return nil, nil
 	}
 
 	if len(dailySeries) < 7 {
 		return nil, fmt.Errorf("not enough data to calculate ETA")
 	}
 
+	// todo: map is random order
 	trailingWindows = map[string]int{
 		"last 7 UTC days": min(7, len(dailySeries)),
 		"last 30 UTC days": min(30, len(dailySeries)),
@@ -34,7 +36,7 @@ func MovingAverageETA(dailySeries []DailyPoint, decimals uint8, totalSupply, bou
 
 	etas := make([]ETA, 0, len(trailingWindows))
 	for name, days := range trailingWindows {
-		eta, days, rate, err := etaFromTrailingWindow(dailySeries, remaining, days, decimals)
+		eta, days, rate, err := etaFromTrailingWindow(dailySeries, remaining, days, token.Decimal)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +52,7 @@ type ETA struct {
 	Window string
 }
 
-func etaFromTrailingWindow(dailySeries []DailyPoint, remaining *big.Int, w int, decimals uint8) (time.Time, int64, string, error) {
+func etaFromTrailingWindow(dailySeries []DailyPoint, remaining *big.Int, w int, decimal uint8) (time.Time, int64, string, error) {
 	sum := big.NewInt(0)
 	from := len(dailySeries) - w
 	for j := from; j < len(dailySeries); j++ {
@@ -76,7 +78,7 @@ func etaFromTrailingWindow(dailySeries []DailyPoint, remaining *big.Int, w int, 
 
 	lastDay := dailySeries[len(dailySeries)-1].Day
 	eta := lastDay.AddDate(0, 0, int(daysInt))
-	rate := FormatBigRat(avgRat, decimals, 1)
+	rate := FormatBigRat(avgRat, decimal, 1)
 	return eta, daysInt, rate, nil
 }
 

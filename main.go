@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aint/cryptotokenlens/internal"
+	"github.com/aint/cryptotokenlens/internal/polygonscan"
 )
 
 // defaultExplorerAPIKey is the fallback when POLYGONSCAN_API_KEY and -api-key are empty.
@@ -28,7 +29,8 @@ func main() {
 	topHolders := fs.Int("top-holders", 15, "Show this many largest holders (0 = all)")
 	_ = fs.Parse(os.Args[1:])
 
-	token, err := internal.NewToken(internal.LaCasaEspañolaVilla9, *apiKey, *scanPause)
+	client := polygonscan.NewClinet(*apiKey)
+	token, err := internal.NewToken(internal.LaCasaEspanolaVilla9, client, *scanPause)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create token: %v\n", err)
 		os.Exit(1)
@@ -36,23 +38,23 @@ func main() {
 
 	printTokenInfo(token)
 
-	internal.PrintHolders(token.Txs, token.TotalSupplyRaw, token.Decimal, *topHolders)
+	internal.PrintHolders(token, *topHolders)
 
-	dailySeries, err := internal.DailySeries(token.Txs, token.Address, token.TotalSupplyRaw)
+	dailySeries, err := internal.DailySeries(token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Build daily series: %v\n", err)
 		os.Exit(1)
 	}
 	printDailySeries(dailySeries, token.Decimal)
 
-	etas, err := internal.MovingAverageETA(dailySeries, token.Decimal, token.TotalSupplyRaw, token.BoughtRaw)
+	etas, err := internal.MovingAverageETA(dailySeries, token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Calculate ETA: %v\n", err)
 		os.Exit(1)
 	}
 	printETAs(etas)
 
-	internal.WriteDailySeriesHTML(fmt.Sprintf("%s.html", token.Name), dailySeries, etas, token.Name, token.Decimal)
+	internal.WriteDailySeriesHTML(fmt.Sprintf("%s.html", token.Name), token, dailySeries, etas)
 }
 
 func printTokenInfo(token internal.Token) {

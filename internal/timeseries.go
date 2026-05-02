@@ -5,8 +5,6 @@ import (
 	"math/big"
 	"strconv"
 	"time"
-
-	"github.com/aint/cryptotokenlens/internal/polygonscan"
 )
 
 type DailyPoint struct {
@@ -16,10 +14,10 @@ type DailyPoint struct {
 	CumPercent float64
 }
 
-func DailySeries(txs []polygonscan.TokenTransfer, tokenAddr string, totalSupply *big.Int) ([]DailyPoint, error) {
+func DailySeries(token Token) ([]DailyPoint, error) {
 	var start, end time.Time
 	timelineMap := make(map[time.Time]*big.Int)
-	for _, t := range txs {
+	for _, t := range token.Txs {
 		ts, err := strconv.ParseInt(t.TimeStamp, 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("parse timestamp %q: %w", t.TimeStamp, err)
@@ -37,7 +35,7 @@ func DailySeries(txs []polygonscan.TokenTransfer, tokenAddr string, totalSupply 
 			return nil, fmt.Errorf("parse value %q: %w", t.Value, err)
 		}
 
-		if t.From == tokenAddr {
+		if t.From == token.Address {
 			cur := timelineMap[day]
 			if cur == nil {
 				cur = big.NewInt(0)
@@ -55,11 +53,11 @@ func DailySeries(txs []polygonscan.TokenTransfer, tokenAddr string, totalSupply 
 		}
 		cumValue = new(big.Int).Add(cumValue, value)
 		pct, _ := new(big.Rat).Mul(
-			new(big.Rat).SetFrac(cumValue, totalSupply),
+			new(big.Rat).SetFrac(cumValue, token.TotalSupplyRaw),
 			big.NewRat(100, 1),
 		).Float64()
 		dailySeries = append(dailySeries, DailyPoint{Day: d, Value: value, CumValue: cumValue, CumPercent: pct})
-		if cumValue.Cmp(totalSupply) == 0 {
+		if cumValue.Cmp(token.TotalSupplyRaw) == 0 {
 			break
 		}
 	}

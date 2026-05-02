@@ -16,27 +16,8 @@ var timeseriesChartHTML []byte
 // chartDataPlaceholder must match timeseries_chart.html exactly.
 var chartDataPlaceholder = []byte("__CHART_DATA_JSON__")
 
-func WriteDailySeriesHTML(path string, series []DailyPoint, etas []ETA, tokenName string, decimals uint8) {
-	payload := chartPayload{
-		Labels:     make([]string, 0, len(series)),
-		Daily:      make([]float64, 0, len(series)),
-		Cumulative: make([]float64, 0, len(series)),
-		Title:      fmt.Sprintf("Daily buys — %s", tokenName),
-		ETAs:       make([]chartETA, 0, len(etas)),
-	}
-	for _, p := range series {
-		payload.Labels = append(payload.Labels, p.Day.UTC().Format(timeDateOnly))
-		payload.Daily = append(payload.Daily, rawToHumanFloat(p.Value, decimals))
-		payload.Cumulative = append(payload.Cumulative, rawToHumanFloat(p.CumValue, decimals))
-	}
-	for _, e := range etas {
-		payload.ETAs = append(payload.ETAs, chartETA{
-			Window: e.Window,
-			Rate:   e.Rate,
-			Days:   e.Days,
-			Date:   e.Time.UTC().Format(time.DateOnly),
-		})
-	}
+func WriteDailySeriesHTML(path string, token Token, series []DailyPoint, etas []ETA) {
+	payload := buildChartPayload(series, etas, token)
 
 	jsonBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -55,6 +36,30 @@ func WriteDailySeriesHTML(path string, series []DailyPoint, etas []ETA, tokenNam
 		return
 	}
 	fmt.Printf("wrote daily series HTML: %s\n", path)
+}
+
+func buildChartPayload(series []DailyPoint, etas []ETA, token Token) chartPayload {
+	payload := chartPayload{
+		Labels:     make([]string, 0, len(series)),
+		Daily:      make([]float64, 0, len(series)),
+		Cumulative: make([]float64, 0, len(series)),
+		Title:      fmt.Sprintf("Daily buys — %s", token.Name),
+		ETAs:       make([]chartETA, 0, len(etas)),
+	}
+	for _, p := range series {
+		payload.Labels = append(payload.Labels, p.Day.UTC().Format(timeDateOnly))
+		payload.Daily = append(payload.Daily, rawToHumanFloat(p.Value, token.Decimal))
+		payload.Cumulative = append(payload.Cumulative, rawToHumanFloat(p.CumValue, token.Decimal))
+	}
+	for _, e := range etas {
+		payload.ETAs = append(payload.ETAs, chartETA{
+			Window: e.Window,
+			Rate:   e.Rate,
+			Days:   e.Days,
+			Date:   e.Time.UTC().Format(time.DateOnly),
+		})
+	}
+	return payload
 }
 
 type chartPayload struct {

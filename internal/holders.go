@@ -11,8 +11,8 @@ import (
 
 const zeroAddr0x = "0x0000000000000000000000000000000000000000"
 
-func PrintHolders(txs []polygonscan.TokenTransfer, totalSupply *big.Int, decimals uint8, top int) error {
-	balances, err := GetBalances(txs)
+func PrintHolders(token Token, top int) error {
+	balances, err := getBalances(token.Txs)
 	if err != nil {
 		return err
 	}
@@ -29,13 +29,13 @@ func PrintHolders(txs []polygonscan.TokenTransfer, totalSupply *big.Int, decimal
 	fmt.Printf("%4s %-44s %32s %14s\n", "#", "address", "balance", "% of supply")
 	for i, k := range keys[:idx] {
 		b := balances.get(k)
-		fmt.Printf("%d. %s %32s %13s%%\n", i+1, k, FormatBigInt(b, decimals), PercentOf(b, totalSupply))
+		fmt.Printf("%d. %s %32s %13s%%\n", i+1, k, FormatBigInt(b, token.Decimal), PercentOf(b, token.TotalSupplyRaw))
 	}
 
 	return nil
 }
 
-func GetBalances(txs []polygonscan.TokenTransfer) (stringBigIntMap, error) {
+func getBalances(txs []polygonscan.TokenTransfer) (stringBigIntMap, error) {
 	balances := make(stringBigIntMap)
 	for _, tx := range txs {
 		v, ok := new(big.Int).SetString(tx.Value, 10)
