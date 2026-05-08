@@ -46,6 +46,10 @@ func (t Token) getHolders() (Holders, error) {
 
 	holders := make(Holders, 0, len(holderMap))
 	for _, address := range keys {
+		if address == t.Address {
+			// ignore token's balance
+			continue
+		}
 		holders = append(holders, Holder{Address: address, Balance: holderMap[address]})
 	}
 	return holders, nil
