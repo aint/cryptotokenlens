@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aint/cryptotokenlens/internal/polygonscan"
+	"github.com/aint/binaryxlens/internal/polygonscan"
 )
 
 type Token struct {

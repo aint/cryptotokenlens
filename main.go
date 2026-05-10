@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aint/cryptotokenlens/internal"
-	"github.com/aint/cryptotokenlens/internal/polygonscan"
+	"github.com/aint/binaryxlens/internal"
+	"github.com/aint/binaryxlens/internal/polygonscan"
 )
 
 // defaultExplorerAPIKey is the fallback when POLYGONSCAN_API_KEY and -api-key are empty.
